@@ -33,6 +33,7 @@
 // 型定義をここに記述している。
 interface LINEWORKS {
   userMessageSend: (env: unknown, text: string) => void;
+  channelMessageSend: (env: unknown, text: string) => void;
   qiitaSampleBotCreate: (env: unknown) => { botId: number };
   qiitaSampleBotDomainRegister: (env: unknown) => void;
 }
@@ -40,23 +41,31 @@ interface LINEWORKS {
 declare const LINEWORKS: LINEWORKS;
 
 function doPost(e: GoogleAppsScript.Events.DoPost) {
-  console.log(e);
-  // if (e == null || e.postData == null || e.postData.contents == null) return
-  // let requestJSON = e.postData.contents
-  // let requestObj = JSON.parse(requestJSON)
-  // let text = requestObj.content.text // 応答メッセージ（今回はオウム返し）
-
-  const env = getEnv_();
-  env.userId = 'yamadashoki@tripath-trial';
-  const text = env.userId;
-
-  // LINE WORKS にメッセージを送信
-  // Ensure LINEWORKS is defined or imported before using it
-  LINEWORKS.userMessageSend(env, text);
+  // Logger.log(e);
+  // try {
+  //   const requestJSON = e.postData.contents;
+  //   const requestObj = JSON.parse(requestJSON);
+  //   const sheet = SpreadsheetApp.getActive().getActiveSheet();
+  //   sheet.appendRow([requestObj]);
+  //   const channelId = requestObj.source.channelId;
+  //   const env = getEnv_();
+  //   env.channelId = channelId;
+  //   const text = channelId;
+  //   // LINE WORKS にメッセージを送信
+  //   // Ensure LINEWORKS is defined or imported before using it
+  //   LINEWORKS.channelMessageSend(env, text);
+  // } catch (error) {
+  //   const env = getEnv_();
+  //   env.userId = 'yamadashoki@tripath-trial';
+  //   LINEWORKS.userMessageSend(env, 'test');
+  // }
 }
 
 function doGet(e: GoogleAppsScript.Events.DoGet) {
-  console.log(e);
+  // const requestJSON = e.parameter.requestJSON;
+  // const requestObj = JSON.parse(requestJSON);
+  // const roomId = requestObj.source.roomId;
+  // console.log(roomId);
 }
 
 function getEnv_() {
@@ -70,6 +79,7 @@ function getEnv_() {
     ADMIN_ID: 'yamadashoki@tripath-trial',
     BOT_ID: 10412045,
     userId: '',
+    channelId: '',
   };
 }
 
@@ -81,13 +91,14 @@ function createBot() {
 }
 
 function checkGmailAndNotifyWebhook() {
-  const keyword = ''; // 件名に含まれるキーワード（空の場合は無視）
-  const senderEmail = ''; // 特定の送信者のメールアドレス（空の場合は無視）
+  const keyword = 'コラボフロー確認通知'; // 件名に含まれるキーワード（空の場合は無視）
+  const senderEmail = 'tripath@collaboflow.com'; // 特定の送信者のメールアドレス（空の場合は無視）
   const numThreadsToProcess = 20; // 処理するスレッド数を指定
   const webhookUrl =
     'https://webhook.worksmobile.com/message/ed01d020-c8c7-44fe-bf85-1b5db0114df5';
   const lastProcessedDateKey = 'LAST_PROCESSED_DATE';
-  const maxBodyLength = 150; // 本文の最大文字数（冒頭で設定可能）
+  const kanribuId = 'kanri@tripath-trial'; // 管理部アカウント(全体通知用ダミーアカウント)
+  const kanribuChannelId = 'fec3b462-0c3f-b275-5c69-b0c4b83cb956'; // 管理部LINEWORKS確認通知用チャンネルID
 
   // 日付をフォーマットする関数
   function formatDate(date: Date) {
@@ -118,14 +129,10 @@ function checkGmailAndNotifyWebhook() {
 
     for (let i = 0; i < threads.length; i++) {
       // スレッドを順に処理
-      Logger.log('処理中のスレッド: ' + (i + 1));
       const messages = threads[i].getMessages();
-      const threadId = threads[i].getId(); // スレッドIDを取得
-      const threadUrl = 'https://mail.google.com/mail/u/0/#inbox/' + threadId; // スレッドURLを生成
 
       for (let j = 0; j < messages.length; j++) {
         // メッセージを順に処理
-        Logger.log('処理中のメッセージ: ' + (j + 1));
         const message = messages[j];
         const messageDate = message.getDate().getTime();
 
@@ -133,14 +140,8 @@ function checkGmailAndNotifyWebhook() {
         if (messageDate > lastProcessedTimestamp) {
           const subject = message.getSubject();
           const from = message.getFrom();
-          let body = message.getPlainBody();
-          if (body.length > maxBodyLength) {
-            body = body.substring(0, maxBodyLength) + '...';
-          }
+          const body = message.getPlainBody();
           const formattedDate = formatDate(new Date(messageDate));
-
-          Logger.log('メールの件名: ' + subject);
-          Logger.log('送信者: ' + from);
 
           // 条件をチェック
           const keywordMatch = !keyword || subject.includes(keyword);
@@ -155,32 +156,37 @@ function checkGmailAndNotifyWebhook() {
             );
 
             try {
-              // const response = UrlFetchApp.fetch(webhookUrl, options);
-              // Pass a valid argument or remove the call if unnecessary
-              const env = getEnv_();
-              env.userId = 'yamadashoki@tripath-trial';
-              const text =
-                'メールを受信しました: ' +
-                subject +
-                '\n' +
-                '送信者: ' +
-                from +
-                '\n' +
-                '日付: ' +
-                formattedDate +
-                '\n' +
-                '本文: ' +
-                body +
-                '\n' +
-                'スレッド: ' +
-                threadUrl;
-              // LINE WORKS にメッセージを送信
-              LINEWORKS.userMessageSend(env, text);
-              Logger.log('Webhook通知を送信しました: 件名: ' + subject);
-              // Logger.log('Webhook応答: ' + response.getContentText());
+              // bodyをJSONに変換する場合は、以下のようにする
+              const bodyJson = JSON.parse(body);
+              bodyJson.contacts.forEach((contact: string) => {
+                const env = getEnv_();
+                const text =
+                  '申請の確認通知を受信しました。' +
+                  '\n\n' +
+                  '申請者: ' +
+                  bodyJson.who +
+                  '\n\n' +
+                  '受信日時: ' +
+                  formattedDate +
+                  '\n\n' +
+                  'タイトル: ' +
+                  bodyJson.title +
+                  '\n\n' +
+                  'URL: ' +
+                  bodyJson.url;
+                if (contact === kanribuId) {
+                  // 通知先のアカウントが管理部アカウントの場合は、チャンネルIDを設定してメッセージを送信
+                  env.channelId = kanribuChannelId;
+                  LINEWORKS.channelMessageSend(env, text);
+                } else {
+                  // 管理部アカウントではない場合は、ユーザーIDを設定してメッセージを送信
+                  env.userId = contact;
+                  LINEWORKS.userMessageSend(env, text);
+                }
+              });
             } catch (e) {
               Logger.log(
-                'Webhook通知の送信に失敗しました: 件名: ' +
+                'LINEWORKSのメッセージ送信が失敗しました: 件名: ' +
                   subject +
                   ', エラー: ' +
                   String(e)
